@@ -1,5 +1,7 @@
 clear all
 close all
+%first try using github
+
 imax=100;
 m=.5122;%.5122; %mosquito per human
 a=.21; %bitting frequiency (per day)
