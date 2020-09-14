@@ -11,24 +11,13 @@ alpha=1/332;  %hypnozoites activation rate
 
 r=1/60;        %rate of blood stage infection clearance
 omega=1/425  ;   %hypnozoites death rate
-Nval=8.5;
-       %Number of hypnozoites per infection
+Nval=8.5;   %Number of hypnozoites per infection
 N=Nval;
-% p=1/imax;  %.5;.25
 
-% k1=1/5;
-% k1= 4/25 ;   %0.46;.095
-% k2= (4/5)^2*(1/5);   %0.35;.05 
-% k3=(4/5)^3*(1/5);
 
-t0=0;
-tmax=9000;   %max simulation time
 
 s_h0(1)=.95;          %initial
 i_h0(1)=.05;
-
-
-
 
 S0=.95;
 I0=.05;
@@ -44,55 +33,56 @@ I_m0=.02*m;
 options = odeset('RelTol', 1e-5);
 % options1 = odeset(options,'NonNegative', 1:7);
 
-N=Nval;
+N=min(Nval,imax);
 for i=2:imax+1
     s_h0(i)=0;
     i_h0(i)=0;
 end
 
+tmax=5000;   %max simulation time
 
-[t,y]=ode45(@white,[t0,tmax],[s_h0,i_h0,S_m0,E_m0,I_m0],options,[m a b c r alpha omega n g N],imax);
-[t1,y1]=ode45(@SEI_clasic, [t0,tmax],[S0,I0,H0,S_m0,E_m0,I_m0],options,[m a b c r alpha omega N n g],imax);
+stp=100;   %discretization step
+part=20;     %how many part for pice wise construction fro $p$
+time=linspace(0,tmax,stp);
 
+[t,y]=ode45(@white,time,[s_h0,i_h0,S_m0,E_m0,I_m0],options,[m a b c r alpha omega n g N],imax);
 
-s_h=y(:,1:imax+1);            %Assigning variable
+% s_h=y(:,1:imax+1);            %Assigning variable
 i_h=y(:,imax+2:2*imax+2);
 
-% s_m=y(:,2*imax+3);
-% e_m=y(:,2*imax+4);
-% i_m=y(:,2*imax+5);
+for i=1:length(time)
+    pp(i)=i_h(i,1)/sum(i_h(i,:),2);  % getting $p$ from white
+end
+
+for i=1:part
+    p(i)=mean(pp((stp/part)*i-((stp/part)-1):(stp/part)*i));   % taking the average between pice
+end
+
+
+for i=1:part
+    Time{i}=linspace((tmax/part)*i-(tmax/part),(tmax/part)*i,stp/part);   % 
+end
+
+ini=[S0,I0,H0,S_m0,E_m0,I_m0];     %initials for SIH model
+
+for i=1:part
+    [t1,y1]=ode45(@SEI_clasic, Time{i},ini,options,[m a b c r alpha omega N n g p(i)],imax);
+
+    ini=y1(end,:);
+    pr_sih=y1(:,2);
+    pl=plot(t1,pr_sih,'-.g','linewidth',2);
+
+    hold on
+end
+set(get(get(pl(end),'Annotation'),'LegendInformation'),'IconDisplayStyle','off');
+ legend('SIH')
+
 pr_white=sum(i_h,2);
-% PvPR=sum(y(:,imax+2:2*imax+2),2);
-        
 
-
-
-pr_sih=y1(:,2);
-% plot(t1,pr_sih,'-.r','linewidth',2)
-
-di=abs(pr_white(end)-pr_sih(end))
-% diff=di(end)
-
-hold on
-% 
 pl1=plot(t,pr_white,'r','linewidth',2);
-% legend('White model with 3 hypnozoites')
-
-pl2=plot(t1,pr_sih,'-.r','linewidth',2);
 xlabel('Time (Days)','FontWeight','bold','Fontsize',12)
 ylabel('Fraction of infected individual','FontWeight','bold','Fontsize',12)
-hold off
-% txt = ['White model with ',num2str(imax),' hypnozoites'];
-txt = ['White model with ',num2str(imax),' hypnozoites '];
 
-legend(pl1,txt,'Location','NorthEast','Fontsize',12);
-a=axes('position',get(gca,'position'),'visible','off');
-legend(a,pl2,'SIH model','Location','East','Fontsize',12);
-% 
-% xlabel('Time (Days)')
-% ylabel('Fraction of infected individual')
-% legend('White model with 3 hypnozoites','SIH model')
-% legend show
 
 function ydot=white(t,y,parameter,imax)
 
@@ -104,9 +94,9 @@ alpha=parameter(6);omega=parameter(7);n=parameter(8);g=parameter(9);N=parameter(
 
 ds_h=zeros(imax+1,1);
 di_h=zeros(imax+1,1);
-% ds_m=0;
-% de_m=zeros;
-% di_m=zeros;
+ds_m=0;
+de_m=0;
+di_m=0;
 
 %geometric distribution of number of hypnozoites per infection
 mat=zeros(imax+1,imax+1);
@@ -130,13 +120,6 @@ i_m=y(2*imax+5);
 
 lambda=m*a*b*i_m;
 lambda_mat=mat*lambda;
-
-%######################### .  Super infection
-% for i=1:imax+1
-%     FOI_blood(i) = lambda + alpha*(i-1);
-%     rho(i)       = FOI_blood(i)/( exp(FOI_blood(i)/r) - 1 );
-% end
-%#####################################
 
 
 ds_h(1)=-lambda*s_h(1)+r*i_h(1)+omega*s_h(2);
@@ -167,44 +150,18 @@ end
 
 function ydot=SEI_clasic(t,y,parameter,imax)
 m=parameter(1);a=parameter(2);b=parameter(3);c=parameter(4);r=parameter(5);alpha=parameter(6);omega=parameter(7);
-N=parameter(8);n=parameter(9);g=parameter(10);
+N=parameter(8);n=parameter(9);g=parameter(10);p=parameter(11);
 
-%  p=1/9.5;
-p=.14;
+
 total=0;
-% N=8.5;
+
 
 for i=2:imax
-    k(i)=((N/(N+1))^(i)*(1/(N+1)));
-    total=total+(i-1)*k(i);
+    k(i)=((N/(N+1))^(i)*(1/(N+1)));    %calculation the probability with different number of hypnozoites
+    total=total+(i-1)*k(i);            %  k2+2*k3+3*k4...
 end
- k(1)=1-sum(k);
-% ftot=total+imax*k(imax);
+ k(1)=1-sum(k(2:imax));
 
-% for i=1:imax
-% pp(i)=((N/(N+1))^(i-1)*(1/(N+1)));
-%    %I_0=p0;I_1=p1;...I_i=1-(p0+p1+..) Model(:2)
-% 
-% end
-%   pp(imax+1)=1-sum(pp);
-% ppp=zeros(imax+1,1)
-for i=2:imax+1
-ppp(i)=(1-p)^(i-1);
-   %I_0=1-sum;I_1=1-p;...I_i=1-(p0+p1+..) Model(:2)
-
-end
-  ppp(1)=1-sum(ppp);
-%   
-% for i=1:imax
-% pp(i)=((N/(N+1))^(i)*(1/(N+1)));      model(:3)
-% end
-  
-% for i=1:imax
-% pp(i)=((N/(N+1))^(i-1)*(1/(N+1)));
-%    %I_0=p0;I_1=p1;...I_i=1-(p0+p1+..) Model(:2)
-
-% end
-%   pp(imax+1)=1-sum(pp);
   
   
   
@@ -225,9 +182,9 @@ I_m=y(6);
 
 lambda=m*a*b*I_m;
 
-dS=-lambda*S+omega*(k(1))*H+(p)*r*I;  %p*r*I  (pp(1))*r*I (MODEL(:2) SEE note  [model(:3) 1-sum(pp)]
+dS=-lambda*S+omega*(k(1))*H+(p)*r*I;  
 dI=lambda*(H+S)+alpha*(1+total)*H-r*I;
-dH=-lambda*H-omega*(k(1))*H-alpha*(1+total)*H+(1-p)*r*I;  %(1-p)*r*I    (sum(pp(2:imax+1))) model(:2)  [sum(pp) ] model(:3)
+dH=-lambda*H-omega*(k(1))*H-alpha*(1+total)*H+(1-p)*r*I; 
 
 dS_m=g*(S_m+I_m+E_m)-a*c*I*S_m-g*S_m;
 dE_m=a*c*I*S_m-(1/n)*E_m-g*E_m;
